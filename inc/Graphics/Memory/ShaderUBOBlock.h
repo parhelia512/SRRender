@@ -78,7 +78,7 @@ namespace SR_GRAPH_NS::Memory {
             uint32_t offset = 0;
             ShaderPropertyVariant value;
         };
-        std::vector<DefaultValue> m_defaultValues;
+        SR_UTILS_NS::Vector<DefaultValue> m_defaultValues;
 
     };
 }

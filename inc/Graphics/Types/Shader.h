@@ -64,6 +64,7 @@ namespace SR_GTYPES_NS {
         RemoveUPResult RemoveUsePoint() override;
 
     public:
+        SR_NODISCARD const ShaderProperty* FindProperty(SR_UTILS_NS::StringAtom id) const noexcept;
         SR_NODISCARD SR_UTILS_NS::Path GetAssociatedPath() const override;
         SR_NODISCARD int32_t GetId() noexcept;
         SR_NODISCARD ShaderProgram GetVirtualProgram() const noexcept { return m_shaderProgram; }

@@ -778,4 +778,13 @@ namespace SR_GRAPH_NS::Types {
     const SR_UTILS_NS::IResourceVariant* Shader::GetVariant() const {
         return &m_params;
     }
+
+    const ShaderProperty* Shader::FindProperty(SR_UTILS_NS::StringAtom id) const noexcept {
+        for (auto&& property : m_properties) {
+            if (property.id == id) {
+                return &property;
+            }
+        }
+        return nullptr;
+    }
 }

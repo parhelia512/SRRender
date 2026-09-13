@@ -8,8 +8,32 @@
 #include <Utils/Common/SubscriptionMessage.h>
 #include <Utils/FileSystem/PathDataAccessor.h>
 #include <Utils/Resources/ResourceManager.h>
+#include <Utils/Serialization/Serializer.h>
+#include <Utils/Serialization/SerializationSaveUtils.h>
 
 #include <Enum/ShaderVarType.hpp>
+
+SR_THREAD_LOCAL const SR_GTYPES_NS::Shader* gMaterialSaveShader = nullptr;
+
+namespace SR_UTILS_NS {
+    template<> struct SaveChecker<SR_GRAPH_NS::MaterialShaderProperty> {
+        static bool CanBeSaved(const SR_GRAPH_NS::MaterialShaderProperty& value) {
+            if (!SerializableCanBeSavedImpl(static_cast<const Serializable&>(value))) {
+                return false;
+            }
+
+            if (gMaterialSaveShader) {
+                if (auto&& pProperty = gMaterialSaveShader->FindProperty(value.id)) {
+                    if (pProperty->defaultData == value.data) {
+                        return false;
+                    }
+                }
+            }
+
+            return true;
+        }
+    };
+}
 
 #include <Codegen/MaterialData.generated.hpp>
 
@@ -146,6 +170,12 @@ namespace SR_GRAPH_NS {
             }
         }
         samplers.clear();
+    }
+
+    void MaterialShaderData::Save(SR_UTILS_NS::ISerializer& serializer) const {
+        gMaterialSaveShader = pShader.Get();
+        Super::Save(serializer);
+        gMaterialSaveShader = nullptr;
     }
 
     void MaterialShaderData::OnPreLoad() {

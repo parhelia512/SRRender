@@ -113,7 +113,7 @@ namespace SR_GRAPH_NS {
         SR_NODISCARD ShaderPropertyVariant GetDefaultData() const;
     };
 
-    typedef std::list<ShaderProperty> ShaderProperties;
+    typedef SR_UTILS_NS::Vector<ShaderProperty> ShaderProperties;
 
     struct ShaderSampler {
         uint32_t binding = SR_UINT32_MAX;

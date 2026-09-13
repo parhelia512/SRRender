@@ -11,14 +11,6 @@
 #include <Utils/Serialization/Serializable.h>
 
 namespace SR_GRAPH_NS {
-    /*SR_ENUM_NS_CLASS_T(MaterialShader, uint16_t,
-        Default,
-        Simple,
-        Shadows, SSAO, HDAO, HBAO, VXAO, Bloom,
-        SSAOShadows, HDAOShadows, HBAOShadows, VXAOShadows,
-        SSAOShadowsBloom
-    );*/
-
     class MaterialData;
 
     enum class MaterialPropertyChangeResult : uint8_t {
@@ -67,6 +59,8 @@ namespace SR_GRAPH_NS {
         SR_UTILS_NS::Vector<MaterialShaderProperty> samplers;
         /// @property
         MaterialStageUseType useType = MaterialStageUseType::Full;
+
+        void Save(SR_UTILS_NS::ISerializer& serializer) const override;
 
         void OnPreLoad() override;
         void OnPostLoad() override;
