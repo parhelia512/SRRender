@@ -1785,6 +1785,9 @@ namespace SR_GRAPH_NS {
         };
 
         EvoVulkan::Tools::VkFunctionsHolder::Instance().GetFileHash = [](const std::string& path) -> uint64_t {
+            if (!SR_UTILS_NS::VFS::Instance().IsFileExists(path)) {
+                return 0;
+            }
             return SR_UTILS_NS::FileSystem::GetFileHash(SR_UTILS_NS::Path(path));
         };
 

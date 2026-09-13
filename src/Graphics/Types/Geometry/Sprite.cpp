@@ -127,83 +127,117 @@ namespace SR_GTYPES_NS {
     }
 
     void Sprite::ApplySliceModeParams(Shader* pShader) {
-        float_t layoutWidth = 0.f;
-        float_t layoutHeight = 0.f;
+        /// Нейтральные значения: слайсинг выключен, UV не искажаются.
+        SR_MATH_NS::FVector4 windowBorder;
+        SR_MATH_NS::FVector4 textureBorder;
+        bool fillCenter = true;
 
-        static const SR_UTILS_NS::StringAtom diffuseAtom("diffuse");
-        auto&& pTexture = GetMaterial()->GetMaterialData()->GetDefaultShaderData().GetSamplerTexture(diffuseAtom);
-        if (!pTexture || !pTexture->CanBeUsed()) {
-            return;
-        }
-
-        auto&& pCanvas = FindCanvas(GetSceneObject().Get());
-        const float_t pixelsPerUnit = pCanvas ? pCanvas->GetReferencePixelsPerUnit() : 100.f;
-        const float_t effectivePPU = std::max(pTexture->GetPPU() / pixelsPerUnit * m_pixelsPerUnitMultiplier, static_cast<float_t>(SR_KINDA_SMALL_NUMBER_EPSILON));
-
-        if (auto&& pTransformRect = SR_UTILS_NS::ExtractTransformAs<SR_UTILS_NS::TransformRect>(GetSceneObject().Get())) SR_LIKELY_ATTRIBUTE {
-            SR_MATH_NS::FRect layout = pTransformRect->GetLayoutRect();
-            layoutWidth = layout.w;
-            layoutHeight = layout.h;
-        }
-
-        if (m_sliceMode == SliceMode::Manual) {
-            if (layoutWidth > 0.0f && layoutHeight > 0.0f) {
-                const SR_MATH_NS::FVector4 windowBorder = {
-                    m_windowBorder.left   / layoutWidth, m_windowBorder.right  / layoutWidth,
-                    m_windowBorder.bottom / layoutHeight, m_windowBorder.top    / layoutHeight
-                };
-                pShader->SetVec4(SHADER_SLICED_WINDOW_BORDER, windowBorder);
-                pShader->SetVec4(SHADER_SLICED_TEXTURE_BORDER, m_textureBorder.vec4);
+        /// Считаем параметры в лямбде, чтобы при любом выходе гарантированно записать униформы,
+        /// иначе в шейдере останутся значения от предыдущего отрисованного спрайта.
+        [&] {
+            if (m_sliceMode == SliceMode::None) {
+                return;
             }
-        }
-        else if (m_sliceMode == SliceMode::Auto) {
-            const SR_MATH_NS::FRect spriteBorder = pTexture->GetBorder();
 
-            if (layoutWidth > 0.0f && layoutHeight > 0.0f && effectivePPU > 0.0f) {
-                // Конвертируем границы текстуры из пикселей в единицы UI
-                float_t leftUI   = spriteBorder.left   / effectivePPU;
-                float_t rightUI  = spriteBorder.right  / effectivePPU;
-                float_t bottomUI = spriteBorder.bottom / effectivePPU;
-                float_t topUI    = spriteBorder.top    / effectivePPU;
+            float_t layoutWidth = 0.f;
+            float_t layoutHeight = 0.f;
 
-                /// --------------------- добавляем корректировку, чтобы углы не перекрывались ---------------------
-                float_t halfWidth  = layoutWidth  * 0.5f;
-                float_t halfHeight = layoutHeight * 0.5f;
-
-                leftUI   = std::min(leftUI,   halfWidth);
-                rightUI  = std::min(rightUI,  halfWidth);
-                bottomUI = std::min(bottomUI, halfHeight);
-                topUI    = std::min(topUI,    halfHeight);
-                /// ------------------------------------------------------------------------------------------------
-
-                // Границы окна в нормализованных координатах (0-1)
-                // Это показывает, где находятся границы в окне относительно его размера
-                // Ограничиваем значения до 1.0, чтобы избежать проблем, когда окно меньше границ текстуры
-                const SR_MATH_NS::FVector4 windowBorder = {
-                    std::min(1.0f, leftUI   / layoutWidth),  // left border в нормализованных координатах
-                    std::min(1.0f, rightUI  / layoutWidth),  // right border в нормализованных координатах
-                    std::min(1.0f, bottomUI / layoutHeight), // bottom border в нормализованных координатах
-                    std::min(1.0f, topUI    / layoutHeight)  // top border в нормализованных координатах
-                };
-
-                // Границы текстуры в нормализованных координатах (0-1)
-                const SR_MATH_NS::FVector4 textureBorder = {
-                    spriteBorder.left   / static_cast<float_t>(pTexture->GetWidth()),   // left в нормализованных координатах
-                    spriteBorder.right  / static_cast<float_t>(pTexture->GetWidth()),   // right в нормализованных координатах
-                    spriteBorder.bottom / static_cast<float_t>(pTexture->GetHeight()),  // bottom в нормализованных координатах
-                    spriteBorder.top    / static_cast<float_t>(pTexture->GetHeight())   // top в нормализованных координатах
-                };
-
-                pShader->SetVec4(SHADER_SLICED_WINDOW_BORDER, windowBorder);
-                pShader->SetVec4(SHADER_SLICED_TEXTURE_BORDER, textureBorder);
+            if (auto&& pTransformRect = SR_UTILS_NS::ExtractTransformAs<SR_UTILS_NS::TransformRect>(GetSceneObject().Get())) SR_LIKELY_ATTRIBUTE {
+                const SR_MATH_NS::FRect layout = pTransformRect->GetLayoutRect();
+                layoutWidth = layout.w;
+                layoutHeight = layout.h;
             }
-        }
-        else {
-            pShader->SetVec4(SHADER_SLICED_WINDOW_BORDER, SR_MATH_NS::FVector4());
-            pShader->SetVec4(SHADER_SLICED_TEXTURE_BORDER, SR_MATH_NS::FVector4());
-        }
 
-        pShader->SetInt(SHADER_FILL_CENTER, m_fillCenter || m_sliceMode == SliceMode::None ? 1 : 0);
+            if (layoutWidth <= 0.f || layoutHeight <= 0.f) {
+                return;
+            }
+
+            static const SR_UTILS_NS::StringAtom diffuseAtom("diffuse");
+            auto&& pTexture = GetMaterial()->GetMaterialData()->GetDefaultShaderData().GetSamplerTexture(diffuseAtom);
+            if (!pTexture || !pTexture->CanBeUsed()) {
+                return;
+            }
+
+            const auto textureWidth = static_cast<float_t>(pTexture->GetWidth());
+            const auto textureHeight = static_cast<float_t>(pTexture->GetHeight());
+            if (textureWidth <= 0.f || textureHeight <= 0.f) {
+                return;
+            }
+
+            /// Границы в пикселях текстуры: какие её края не растягиваются.
+            const SR_MATH_NS::FRect spriteBorder = m_sliceMode == SliceMode::Auto ? pTexture->GetBorder() : m_textureBorder;
+
+            /// Те же границы, но в пикселях UI: сколько места углы занимают на экране.
+            float_t leftUI = spriteBorder.left;
+            float_t rightUI = spriteBorder.right;
+            float_t bottomUI = spriteBorder.bottom;
+            float_t topUI = spriteBorder.top;
+
+            if (m_sliceMode == SliceMode::Auto) {
+                auto&& pCanvas = FindCanvas(GetSceneObject().Get());
+                const float_t referencePixelsPerUnit = pCanvas ? pCanvas->GetReferencePixelsPerUnit() : 100.f;
+                const float_t texturePixelsPerUnit = pTexture->GetPPU();
+
+                /// Во сколько раз пиксель текстуры крупнее пикселя UI.
+                /// Множитель делит границы: чем он больше, тем тоньше рамка (как в Unity).
+                const float_t multiplier = std::max(m_pixelsPerUnitMultiplier, static_cast<float_t>(SR_KINDA_SMALL_NUMBER_EPSILON));
+                const float_t pixelScale = texturePixelsPerUnit > 0.f
+                    ? referencePixelsPerUnit / (texturePixelsPerUnit * multiplier)
+                    : 1.f / multiplier;
+
+                leftUI *= pixelScale;
+                rightUI *= pixelScale;
+                bottomUI *= pixelScale;
+                topUI *= pixelScale;
+            }
+            else if (m_windowBorder != SR_MATH_NS::FRect()) {
+                /// В ручном режиме размер углов на экране можно задать независимо от границ текстуры.
+                leftUI = m_windowBorder.left;
+                rightUI = m_windowBorder.right;
+                bottomUI = m_windowBorder.bottom;
+                topUI = m_windowBorder.top;
+            }
+
+            leftUI = std::max(leftUI, 0.f);
+            rightUI = std::max(rightUI, 0.f);
+            bottomUI = std::max(bottomUI, 0.f);
+            topUI = std::max(topUI, 0.f);
+
+            /// Углы не должны перекрываться: если суммарно они больше спрайта, ужимаем их пропорционально.
+            if (const float_t borderWidth = leftUI + rightUI; borderWidth > layoutWidth) {
+                const float_t scale = layoutWidth / borderWidth;
+                leftUI *= scale;
+                rightUI *= scale;
+            }
+
+            if (const float_t borderHeight = bottomUI + topUI; borderHeight > layoutHeight) {
+                const float_t scale = layoutHeight / borderHeight;
+                bottomUI *= scale;
+                topUI *= scale;
+            }
+
+            /// Границы окна - доли от размера спрайта.
+            windowBorder = SR_MATH_NS::FVector4(
+                leftUI / layoutWidth,
+                rightUI / layoutWidth,
+                bottomUI / layoutHeight,
+                topUI / layoutHeight
+            );
+
+            /// Границы текстуры - доли от её размера.
+            textureBorder = SR_MATH_NS::FVector4(
+                SR_CLAMP(spriteBorder.left / textureWidth, 0.f, 1.f),
+                SR_CLAMP(spriteBorder.right / textureWidth, 0.f, 1.f),
+                SR_CLAMP(spriteBorder.bottom / textureHeight, 0.f, 1.f),
+                SR_CLAMP(spriteBorder.top / textureHeight, 0.f, 1.f)
+            );
+
+            fillCenter = m_fillCenter;
+        }();
+
+        pShader->SetVec4(SHADER_SLICED_WINDOW_BORDER, windowBorder);
+        pShader->SetVec4(SHADER_SLICED_TEXTURE_BORDER, textureBorder);
+        pShader->SetInt(SHADER_FILL_CENTER, fillCenter ? 1 : 0);
     }
 
     bool IsSpriteFillOriginApplicable(const Sprite& sprite, SpriteFillOrigin origin) {

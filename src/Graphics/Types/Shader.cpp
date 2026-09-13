@@ -16,6 +16,7 @@
 #include <Utils/Memory/Allocator.h>
 #include <Utils/Memory/MemoryLiterals.h>
 #include <Utils/Memory/AllocatorManager.h>
+#include <Utils/FileSystem/VFS.h>
 
 #include <Codegen/Shader.generated.hpp>
 
@@ -377,7 +378,10 @@ namespace SR_GRAPH_NS::Types {
             pContext->SetDirty();
         }
 
-        auto&& cachedPath = SR_UTILS_NS::ResourceManager::Instance().GetCachePath().Concat("Shaders").Concat(path).Concat(m_params.GetHashStr());
+        auto&& cachedPath = CoreResLoader::GetCachePath();
+        SR_UTILS_NS::VFS::Instance().ResolvePath(cachedPath, SR_UTILS_NS::FileMode::Write);
+        cachedPath = cachedPath.Concat("Shaders").Concat(path).Concat(m_params.GetHashStr());
+
         if (ShaderCache::Instance().LoadShaderFromCache(cachedPath, this)) {
             StopWatch();
             StartWatch();
